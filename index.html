@@ -1,0 +1,533 @@
+<title>Water Sort Solver</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a lab bench. Left: the puzzle rack you fill in. Right: the solution, replayed pour by pour. */
+:root {
+  --bg: #eef2f6;
+  --panel: #ffffff;
+  --ink: #17212e;
+  --muted: #5b6878;
+  --line: #d5dde7;
+  --glass: #9fb0c3;
+  --accent: #2f5bd3;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2e9fb;
+  --warn: #a35a00;
+  --warn-soft: #fff1dc;
+  --good: #1d7a4a;
+  --font-display: "Fredoka", "Baloo 2", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --layer: 26px;
+  --tube-w: 40px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151d; --panel: #18212c; --ink: #e8eef5; --muted: #9aa8b8; --line: #2a3644;
+    --glass: #5d6f84; --accent: #7d9bf0; --accent-ink: #0f151d; --accent-soft: #223152;
+    --warn: #f0b05a; --warn-soft: #3a2a12; --good: #5cc98f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151d; --panel: #18212c; --ink: #e8eef5; --muted: #9aa8b8; --line: #2a3644;
+  --glass: #5d6f84; --accent: #7d9bf0; --accent-ink: #0f151d; --accent-soft: #223152;
+  --warn: #f0b05a; --warn-soft: #3a2a12; --good: #5cc98f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: 2rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-weight: 500; font-size: 1.25rem; margin: 0; }
+.sub { color: var(--muted); margin: 2px 0 0; max-width: 62ch; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 880px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.between { justify-content: space-between; }
+.label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+
+button, select, input[type=number] {
+  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+input[type=number] { width: 4.5em; cursor: text; }
+button:hover { border-color: var(--glass); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .tube:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: .45; cursor: default; }
+.icon-btn { padding: 6px 10px; min-width: 40px; }
+
+/* palette */
+.palette { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border-radius: 999px;
+  font-size: .8rem; font-variant-numeric: tabular-nums; color: var(--muted);
+}
+.swatch i { width: 22px; height: 22px; border-radius: 50%; display: block; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.swatch[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.swatch.full { color: var(--good); }
+.swatch.over { color: var(--warn); }
+
+/* tubes */
+.rack { display: flex; flex-wrap: wrap; gap: 14px 12px; justify-content: center; padding: 8px 0 4px; }
+.rowbreak { flex-basis: 100%; height: 0; }
+@media (max-width: 520px) { :root { --tube-w: 32px; --layer: 22px; } .rack { gap: 12px 8px; } }
+.slot { display: grid; justify-items: center; gap: 4px; }
+.tube {
+  width: var(--tube-w); height: calc(var(--layer) * var(--cap) + 12px);
+  border: 2px solid var(--glass); border-top-color: transparent; border-radius: 0 0 20px 20px;
+  display: flex; flex-direction: column-reverse; overflow: hidden; padding: 0;
+  background: transparent; cursor: pointer; position: relative;
+  transition: transform .25s ease, border-color .2s;
+}
+.tube .w { height: var(--layer); flex: none; }
+.tube.static { cursor: default; }
+.tube.from { transform: translateY(-14px); border-color: var(--warn); border-top-color: transparent; }
+.tube.to { border-color: var(--accent); border-top-color: transparent; }
+.tube.done { border-color: var(--good); border-top-color: transparent; }
+.num { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.slot .pop { font-size: .7rem; padding: 0 8px; line-height: 1.6; border-radius: 6px; color: var(--muted); }
+
+.note { border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
+.note.warn { background: var(--warn-soft); color: var(--warn); }
+.note ul { margin: 4px 0 0; padding-left: 18px; }
+
+details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+textarea {
+  width: 100%; font-family: var(--font-mono); font-size: .85rem; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; resize: vertical; min-height: 4.5em; margin-top: 8px;
+}
+.hint { color: var(--muted); font-size: .85rem; margin: 6px 0 0; }
+code { font-family: var(--font-mono); font-size: .85em; }
+
+/* solution */
+.stats { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: .9rem; }
+.stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.caption { font-family: var(--font-display); font-size: 1.15rem; min-height: 1.6em; text-align: center; }
+.caption .step { color: var(--muted); font-family: var(--font-mono); font-size: .8rem; display: block; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.steps { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; border-top: 1px solid var(--line); }
+.steps li { display: grid; grid-template-columns: 2.6em 14px minmax(0,1fr); gap: 10px; align-items: center; padding: 7px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: .92rem; }
+.steps li .n { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.steps li .dot { width: 14px; height: 14px; border-radius: 50%; }
+.steps li[aria-current="step"] { background: var(--accent-soft); }
+.shot { display: grid; gap: 10px; }
+.drop {
+  border: 1.5px dashed var(--glass); border-radius: 12px; padding: 14px; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 10px; background: var(--bg);
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { margin: 0; color: var(--muted); font-size: .9rem; flex: 1 1 14em; }
+.preview { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.preview canvas { max-width: 150px; max-height: 260px; width: auto; height: auto; border-radius: 8px; border: 1px solid var(--line); }
+.preview .msg { flex: 1 1 14em; font-size: .9rem; min-width: 0; }
+.preview .msg strong { display: block; font-family: var(--font-display); font-weight: 500; font-size: 1.05rem; }
+.empty { color: var(--muted); text-align: center; padding: 32px 8px; }
+@media (prefers-reduced-motion: reduce) { .tube { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Water Sort Solver</h1>
+      <p class="sub">Fill the tubes to match your level, then solve. Breadth-first search with a deque finds the fewest pours; very large levels switch to a faster best-first search.</p>
+    </div>
+  </header>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="puzzle-h">
+      <div class="row between">
+        <h2 id="puzzle-h">Your puzzle</h2>
+      </div>
+
+      <div class="shot">
+        <div class="drop" id="drop">
+          <button type="button" class="primary" id="pickShot">Read a screenshot</button>
+          <p>Upload, drop or paste a screenshot of your level. Tubes are numbered left to right, top row first.</p>
+          <input type="file" id="shotFile" accept="image/*" hidden>
+        </div>
+        <div class="preview" id="preview" hidden>
+          <canvas id="shotCanvas" aria-label="Your screenshot with the tubes the reader found"></canvas>
+          <div class="msg" id="shotMsg"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="label" for="cap">Layers per tube</label>
+        <input id="cap" type="number" min="1" max="8" value="4">
+        <span style="flex:1"></span>
+        <button id="addTube" type="button">Add tube</button>
+        <button id="removeTube" type="button">Remove tube</button>
+        <button id="clear" type="button">Empty all</button>
+      </div>
+
+      <div>
+        <div class="label" style="margin-bottom:8px">Pick a color, then tap a tube to add a layer on top</div>
+        <div class="palette" id="palette" role="toolbar" aria-label="Colors"></div>
+      </div>
+
+      <div class="rack" id="editRack" aria-label="Puzzle tubes"></div>
+
+      <div id="problems" class="note warn" hidden></div>
+
+      <div class="row">
+        <button id="solve" class="primary" type="button">Solve</button>
+        <span id="solveMsg" class="hint" style="margin:0"></span>
+      </div>
+
+      <details>
+        <summary>Type the puzzle as text</summary>
+        <textarea id="text" spellcheck="false" aria-label="Puzzle as text"></textarea>
+        <p class="hint">One tube per word, bottom to top, like your Python input <code>["oorb", "borb", "rbor", "", ""]</code>. Use <code>-</code> for an empty tube. Letters: <span id="legend"></span>.</p>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="sol-h">
+      <div class="row between">
+        <h2 id="sol-h">Solution</h2>
+        <div class="stats" id="stats"></div>
+      </div>
+      <div id="solArea"><p class="empty">Press Solve to see the pours.</p></div>
+    </section>
+  </div>
+</div>
+
+<script src="solver.js"></script>
+<script src="reader.js"></script>
+<script>
+(() => {
+  const COLORS = [
+    ['r', 'red', '#e5332a'], ['o', 'orange', '#f5871f'], ['y', 'yellow', '#f6d42a'],
+    ['l', 'lime', '#9bd33a'], ['g', 'green', '#2f9e44'], ['t', 'teal', '#127a6e'],
+    ['c', 'sky', '#5bc0f0'], ['b', 'blue', '#1f4fe0'], ['p', 'purple', '#7b3fc4'],
+    ['k', 'pink', '#f06aa8'], ['a', 'gray', '#8a8f98'], ['n', 'brown', '#8a5a2b'],
+    ['d', 'dark green', '#3a5212'], ['m', 'mint', '#12e4a6'], ['v', 'violet', '#5e2d8c'],
+    ['w', 'white', '#e9edf2'],
+  ];
+  const BASE_HEX = Object.fromEntries(COLORS.map(c => [c[0], c[2]]));
+  const NAME = Object.fromEntries(COLORS.map(c => [c[0], c[1]]));
+  // a screenshot can tint the palette to match the game's exact shades
+  const HEX = new Proxy({}, { get: (_, k) => (state.tint && state.tint[k]) || BASE_HEX[k] });
+  const PRESETS = {
+    l3: { cap: 4, grid: ['oorb', 'borb', 'rbor', '', ''] },
+    m: { cap: 4, grid: ['gtrg', 'ltrc', 'ccro', 'yylr', 'ogoc', 'gtyt', 'loyl', '', ''] },
+    h: { cap: 4, grid: ['yatg', 'ylbb', 'gkob', 'bplr', 'cnnt', 'kott', 'kacc', 'nngg', 'clpr', 'pory', 'aykl', 'paro', '', ''] },
+    blank: { cap: 4, grid: ['', '', '', '', '', ''] },
+  };
+  const $ = id => document.getElementById(id);
+
+  let state = load() || { cap: 4, grid: PRESETS.l3.grid.slice() };
+  let pick = 'r';
+  let sol = null; // { grid, cap, moves, frames, method, explored }
+  let idx = 0, timer = null;
+
+  function load() {
+    try { const s = JSON.parse(localStorage.getItem('ws-puzzle')); if (s && Array.isArray(s.grid)) return s; } catch (e) {}
+    return null;
+  }
+  function save() { try { localStorage.setItem('ws-puzzle', JSON.stringify(state)); } catch (e) {} }
+
+  function tubeEl(t, cap, opts = {}) {
+    const el = document.createElement(opts.button ? 'button' : 'div');
+    el.className = 'tube' + (opts.button ? '' : ' static');
+    if (opts.button) el.type = 'button';
+    el.style.setProperty('--cap', cap);
+    for (const ch of t) {
+      const w = document.createElement('span');
+      w.className = 'w'; w.style.background = HEX[ch] || '#000';
+      w.title = NAME[ch] || ch;
+      el.appendChild(w);
+    }
+    const solvedTube = t.length === cap && [...t].every(c => c === t[0]);
+    if (solvedTube) el.classList.add('done');
+    return el;
+  }
+
+  // Break the rack into the same rows as the game screen, when we know them.
+  function addRowBreak(rack, i, n) {
+    if (!state.rows || state.rows.reduce((a, b) => a + b, 0) !== n) return;
+    let end = 0;
+    for (const r of state.rows.slice(0, -1)) { end += r; if (i === end - 1) { const br = document.createElement('div'); br.className = 'rowbreak'; rack.appendChild(br); } }
+  }
+
+  function counts() {
+    const n = {};
+    for (const t of state.grid) for (const c of t) n[c] = (n[c] || 0) + 1;
+    return n;
+  }
+
+  function renderPalette() {
+    const n = counts();
+    const pal = $('palette'); pal.innerHTML = '';
+    for (const [k, name] of COLORS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch';
+      b.setAttribute('aria-pressed', String(k === pick));
+      b.setAttribute('aria-label', `${name}, ${n[k] || 0} of ${state.cap} placed`);
+      const used = n[k] || 0;
+      if (used === state.cap) b.classList.add('full');
+      if (used > state.cap) b.classList.add('over');
+      b.innerHTML = `<i style="background:${HEX[k]}"></i>${used}/${state.cap}`;
+      b.onclick = () => { pick = k; renderPalette(); };
+      pal.appendChild(b);
+    }
+    $('legend').textContent = COLORS.map(c => `${c[0]} ${c[1]}`).join(', ');
+  }
+
+  function renderRack() {
+    const rack = $('editRack'); rack.innerHTML = '';
+    state.grid.forEach((t, i) => {
+      const slot = document.createElement('div'); slot.className = 'slot';
+      const el = tubeEl(t, state.cap, { button: true });
+      el.setAttribute('aria-label', `Tube ${i + 1}: ${t ? [...t].map(c => NAME[c] || c).join(', ') : 'empty'}. Add ${NAME[pick]}.`);
+      el.onclick = () => {
+        if (state.grid[i].length >= state.cap) return;
+        state.grid[i] += pick; changed();
+      };
+      const pop = document.createElement('button');
+      pop.type = 'button'; pop.className = 'pop'; pop.textContent = 'undo';
+      pop.disabled = !t.length;
+      pop.setAttribute('aria-label', `Remove top layer of tube ${i + 1}`);
+      pop.onclick = () => { state.grid[i] = state.grid[i].slice(0, -1); changed(); };
+      const num = document.createElement('span'); num.className = 'num'; num.textContent = i + 1;
+      slot.append(el, num, pop); rack.appendChild(slot);
+      addRowBreak(rack, i, state.grid.length);
+    });
+  }
+
+  function renderText() {
+    if (document.activeElement !== $('text')) $('text').value = state.grid.map(t => t || '-').join(' ');
+  }
+
+  function renderProblems() {
+    const p = WaterSort.validate(state.grid, state.cap);
+    const box = $('problems');
+    box.hidden = !p.length;
+    box.innerHTML = p.length ? `<strong>Check your puzzle</strong><ul>${p.map(x => `<li>${x.replace(/"(.)"/g, (_, c) => NAME[c] || c)}</li>`).join('')}</ul>` : '';
+  }
+
+  function changed() {
+    save(); renderPalette(); renderRack(); renderText(); renderProblems();
+    $('solveMsg').textContent = sol ? 'Puzzle changed. Solve again to update.' : '';
+  }
+
+  // ----- solving -----
+  let worker = null;
+  try { worker = new Worker('solver.js'); } catch (e) { worker = null; }
+
+  function runSolver(grid, cap) {
+    return new Promise(resolve => {
+      if (!worker) return resolve(WaterSort.solve(grid, cap));
+      const w = worker;
+      w.onmessage = e => resolve(e.data);
+      w.onerror = () => { worker = null; resolve(WaterSort.solve(grid, cap)); };
+      w.postMessage({ grid, cap });
+    });
+  }
+
+  async function solve() {
+    stop();
+    const grid = state.grid.slice(), cap = state.cap;
+    $('solve').disabled = true; $('solveMsg').textContent = 'Searching\u2026';
+    const t0 = performance.now();
+    const res = await runSolver(grid, cap);
+    const ms = Math.round(performance.now() - t0);
+    $('solve').disabled = false; $('solveMsg').textContent = '';
+    if (res.error) {
+      sol = null;
+      $('stats').innerHTML = `<span><b>${res.explored.toLocaleString()}</b> positions checked</span>`;
+      $('solArea').innerHTML = `<div class="note warn">${res.error} Check that every color has ${cap} layers and that the tubes match your screen.</div>`;
+      return;
+    }
+    sol = { grid, cap, moves: res.moves, frames: WaterSort.states(grid, res.moves), method: res.method };
+    idx = 0;
+    $('stats').innerHTML =
+      `<span><b>${res.moves.length}</b> pours</span>` +
+      `<span>${res.optimal ? 'fewest possible' : 'fast search, may not be shortest'}</span>` +
+      `<span><b>${res.explored.toLocaleString()}</b> positions in ${ms} ms</span>`;
+    buildSolution();
+  }
+
+  function describe(m) {
+    return `Pour <strong>${NAME[m.color] || m.color}</strong> from tube ${m.from + 1} into tube ${m.to + 1}` + (m.count > 1 ? ` <span class="num">(${m.count} layers)</span>` : '');
+  }
+
+  function buildSolution() {
+    const a = $('solArea'); a.innerHTML = '';
+    if (!sol.moves.length) { a.innerHTML = '<p class="empty">Already sorted. Nothing to pour.</p>'; return; }
+    a.innerHTML = `
+      <div style="display:grid;gap:14px">
+        <div class="rack" id="playRack" aria-live="polite" style="padding-top:20px"></div>
+        <div class="caption" id="caption"></div>
+        <input type="range" id="scrub" min="0" max="${sol.moves.length}" value="0" aria-label="Step">
+        <div class="row" style="justify-content:center">
+          <button class="icon-btn" id="first" type="button" aria-label="Back to start">&#x23EE;</button>
+          <button class="icon-btn" id="prev" type="button" aria-label="Previous pour">&#x25C0;</button>
+          <button id="play" type="button" class="primary">Play</button>
+          <button class="icon-btn" id="next" type="button" aria-label="Next pour">&#x25B6;</button>
+        </div>
+        <ol class="steps" id="steps"></ol>
+      </div>`;
+    const list = $('steps');
+    sol.moves.forEach((m, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="n">${i + 1}</span><span class="dot" style="background:${HEX[m.color]}"></span><span>${describe(m)}</span>`;
+      li.onclick = () => { stop(); show(i + 1); };
+      list.appendChild(li);
+    });
+    $('scrub').oninput = e => { stop(); show(+e.target.value); };
+    $('first').onclick = () => { stop(); show(0); };
+    $('prev').onclick = () => { stop(); show(idx - 1); };
+    $('next').onclick = () => { stop(); show(idx + 1); };
+    $('play').onclick = () => timer ? stop() : play();
+    show(0);
+  }
+
+  // Frame k shows the board before pour k+1, with that pour highlighted.
+  function show(k) {
+    idx = Math.max(0, Math.min(sol.moves.length, k));
+    const g = sol.frames[idx], m = sol.moves[idx];
+    const rack = $('playRack'); rack.innerHTML = '';
+    g.forEach((t, i) => {
+      const slot = document.createElement('div'); slot.className = 'slot';
+      const el = tubeEl(t, sol.cap);
+      if (m && i === m.from) el.classList.add('from');
+      if (m && i === m.to) el.classList.add('to');
+      const num = document.createElement('span'); num.className = 'num'; num.textContent = i + 1;
+      slot.append(el, num); rack.appendChild(slot);
+      addRowBreak(rack, i, g.length);
+    });
+    $('caption').innerHTML = m
+      ? `<span class="step">Pour ${idx + 1} of ${sol.moves.length}</span>${describe(m)}`
+      : `<span class="step">Done</span>Every tube is sorted.`;
+    $('scrub').value = idx;
+    $('prev').disabled = idx === 0; $('first').disabled = idx === 0;
+    $('next').disabled = idx === sol.moves.length;
+    [...$('steps').children].forEach((li, i) => {
+      if (i === idx) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+    });
+    const cur = $('steps').children[idx];
+    if (cur && timer) cur.scrollIntoView({ block: 'nearest' });
+  }
+
+  function play() {
+    if (idx >= sol.moves.length) show(0);
+    $('play').textContent = 'Pause';
+    timer = setInterval(() => { if (idx >= sol.moves.length) return stop(); show(idx + 1); }, 900);
+  }
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    if ($('play')) $('play').textContent = 'Play';
+  }
+
+  // ----- controls -----
+  $('solve').onclick = solve;
+  $('cap').onchange = e => { state.cap = Math.max(1, Math.min(8, +e.target.value || 4)); e.target.value = state.cap; changed(); };
+  $('addTube').onclick = () => { if (state.grid.length < 20) { state.grid.push(''); changed(); } };
+  $('removeTube').onclick = () => { if (state.grid.length > 1) { state.grid.pop(); changed(); } };
+  $('clear').onclick = () => { state.grid = state.grid.map(() => ''); state.tint = null; changed(); };
+  $('text').oninput = e => {
+    const words = e.target.value.toLowerCase().replace(/[\[\]",']/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return;
+    state.grid = words.map(w => w === '-' ? '' : w.replace(/[^a-z]/g, ''));
+    changed();
+  };
+
+  // ----- screenshots -----
+  const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const rgbToHex = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  const cdist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  // Give each detected color the closest unused palette letter.
+  function assignLetters(colors) {
+    const pairs = [];
+    colors.forEach((c, ci) => COLORS.forEach(([k, , hex]) => pairs.push([cdist(c.rgb, hexToRgb(hex)), ci, k])));
+    pairs.sort((a, b) => a[0] - b[0]);
+    const byColor = {}, used = new Set();
+    for (const [, ci, k] of pairs) {
+      if (byColor[ci] !== undefined || used.has(k)) continue;
+      byColor[ci] = k; used.add(k);
+    }
+    return byColor;
+  }
+
+  function showShot(img, name) {
+    const cv = $('shotCanvas'), ctx = cv.getContext('2d', { willReadFrequently: true });
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    ctx.drawImage(img, 0, 0);
+    const res = WaterSortReader.read(ctx.getImageData(0, 0, cv.width, cv.height));
+    $('preview').hidden = false;
+    if (res.error || !res.tubes.some(t => t.layers.length)) {
+      $('shotMsg').innerHTML = `<strong>Couldn't read that one</strong>${res.error || 'No liquid found in the tubes.'} The reader expects the whole board on a dark background, like playwatersort.org.`;
+      return;
+    }
+    if (res.colors.length > COLORS.length) {
+      $('shotMsg').innerHTML = `<strong>Too many colors</strong>Found ${res.colors.length} shades, more than this solver has letters for. Try a sharper screenshot.`;
+      return;
+    }
+    const letter = assignLetters(res.colors);
+    state = {
+      cap: res.cap,
+      grid: res.tubes.map(t => t.layers.map(ci => letter[ci]).join('')),
+      tint: Object.fromEntries(res.colors.map((c, ci) => [letter[ci], rgbToHex(c.rgb)])),
+      rows: res.tubes.reduce((rows, t) => { rows[t.box.row] = (rows[t.box.row] || 0) + 1; return rows; }, []),
+    };
+    $('cap').value = state.cap;
+    pick = letter[0];
+
+    // mark the tubes the reader found
+    const lw = Math.max(3, cv.width / 250);
+    ctx.lineWidth = lw; ctx.strokeStyle = '#2f5bd3'; ctx.fillStyle = '#2f5bd3';
+    ctx.font = `600 ${Math.round(cv.width / 22)}px system-ui, sans-serif`; ctx.textAlign = 'center';
+    res.tubes.forEach((t, i) => {
+      const b = t.box;
+      ctx.strokeRect(b.x0 - lw, b.y0 - lw, b.x1 - b.x0 + 2 * lw, b.y1 - b.y0 + 2 * lw);
+      const tx = (b.x0 + b.x1) / 2, ty = b.y1 + cv.width / 18;
+      ctx.fillRect(tx - cv.width / 28, ty - cv.width / 22, cv.width / 14, cv.width / 15);
+      ctx.fillStyle = '#ffffff'; ctx.fillText(String(i + 1), tx, ty); ctx.fillStyle = '#2f5bd3';
+    });
+
+    const off = res.warnings.map(w => `${NAME[letter[w.color]]} has ${w.count}`);
+    $('shotMsg').innerHTML =
+      `<strong>Found ${res.tubes.length} tubes and ${res.colors.length} colors</strong>` +
+      `${res.cap} layers per tube. Check the tubes below against your screen; tap a tube to add a layer or "undo" to remove one.` +
+      (off.length ? `<div class="note warn" style="margin-top:8px">Some colors don't add up to ${res.cap}: ${off.join(', ')}. Fix those tubes before solving.</div>` : '');
+    changed();
+    if (!off.length) solve();
+  }
+
+  function loadShot(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { showShot(img, file.name); URL.revokeObjectURL(url); };
+    img.onerror = () => { $('preview').hidden = false; $('shotMsg').innerHTML = '<strong>That file didn\'t open as an image.</strong>Try a PNG or JPG screenshot.'; };
+    img.src = url;
+  }
+
+  $('pickShot').onclick = () => $('shotFile').click();
+  $('shotFile').onchange = e => { loadShot(e.target.files[0]); e.target.value = ''; };
+  const drop = $('drop');
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); loadShot(e.dataTransfer.files[0]); });
+  document.addEventListener('paste', e => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) { e.preventDefault(); loadShot(item.getAsFile()); }
+  });
+
+  $('cap').value = state.cap;
+  changed();
+  solve();
+})();
+</script>
